@@ -1,4 +1,5 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile } from 'obsidian';
+import { ExampleView, VIEW_TYPE_EXAMPLE } from "./view";
 
 // Remember to rename these classes and interfaces!
 
@@ -13,14 +14,27 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 
+	private target: TAbstractFile;
+
 	async onload() {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', async (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			new Notice('Hello world aaaa!');
+
+			const instance = this.getViewInstance();
+
+			if (instance) {
+				this.app.workspace.detachLeavesOfType(VIEW_TYPE_EXAMPLE);
+				instance.onClose();
+			} else {
+				this.showView();
+			}
 		});
+
+
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
@@ -42,7 +56,6 @@ export default class MyPlugin extends Plugin {
 			name: 'Sample editor command',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
 			}
 		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
@@ -64,10 +77,18 @@ export default class MyPlugin extends Plugin {
 				}
 			}
 		});
+		this.addCommand({
+			id: "print-greeting-to-console",
+			name: "Print greeting to console",
+			callback: () => {
+				console.log("Hey, you!");
+			},
+		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
+		this.registerEvent(this.app.vault.on('modify', this.onChange.bind(this)));
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
@@ -76,10 +97,66 @@ export default class MyPlugin extends Plugin {
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+
+		this.registerView(
+			VIEW_TYPE_EXAMPLE,
+			(leaf) => new ExampleView(leaf)
+		);
+
+		this.app.workspace.onLayoutReady(async () => {
+			console.log('layout ready');
+			await this.showView();
+		})
+	}
+
+	async showView() {
+		const targetDocument = this.app.workspace.getActiveFile();
+
+		if (!targetDocument) {
+			console.log('no active file')
+			return;
+		}
+
+		this.target = targetDocument;
+
+		await this.activateView();
+	}
+
+	getViewInstance(): ExampleView | null {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_EXAMPLE)) {
+			const view = leaf.view;
+			if (view instanceof ExampleView) {
+				return view;
+			}
+		}
+		return null;
+	}
+
+	onChange(file: TAbstractFile) {
+
+		const instance = this.getViewInstance();
+
+		if (instance) {
+			instance.onChange();
+		}
+	}
+
+	async activateView() {
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_EXAMPLE);
+
+		await this.app.workspace.getRightLeaf(false).setViewState({
+			type: VIEW_TYPE_EXAMPLE,
+			active: true,
+		});
+
+		this.app.workspace.revealLeaf(
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_EXAMPLE)[0]
+		);
 	}
 
 	onunload() {
-
+		console.log('unmount')
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_EXAMPLE);
 	}
 
 	async loadSettings() {
@@ -97,12 +174,12 @@ class SampleModal extends Modal {
 	}
 
 	onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
@@ -116,11 +193,15 @@ class SampleSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+		containerEl.createEl('h2', { text: 'Settings for my awesome plugin.' });
+
+		const book = containerEl.createEl("div", { cls: "book" });
+		book.createEl("div", { text: "How to Take Smart Notes", cls: "book__title" });
+		book.createEl("small", { text: "Sönke Ahrens", cls: "book__author" });
 
 		new Setting(containerEl)
 			.setName('Setting #1')
